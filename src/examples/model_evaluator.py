@@ -136,7 +136,7 @@ def train_model(phen):
     model = load_model('examples/models/model_7_0.h5')
     opt = model.optimizer
     model.compile(loss='categorical_crossentropy', optimizer=keras.optimizers.SGD(lr=0.01, momentum=0.0, decay=0.0, nesterov=False), metrics=['accuracy'])
-
+    print(model.summary())
     K.tensorflow_backend._get_available_gpus()
     function_string ='''
 def scheduler(learning_rate, epoch):
@@ -144,7 +144,7 @@ def scheduler(learning_rate, epoch):
     exec(function_string, globals())
     print(function_string)
     lr_schedule_callback = keras.callbacks.LearningRateScheduler(scheduler, verbose=1)
-    early_stop = keras.callbacks.EarlyStopping(restore_best_weights=True)
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.001, restore_best_weights=True)
     score = model.fit_generator(datagen_train.flow(dataset['x_train'],
                                                        dataset['y_train'],
                                                        batch_size=batch_size),
