@@ -2,7 +2,7 @@ import sys
 from rng_seeds import *
 
 
-POPULATION_SIZE = 10
+POPULATION_SIZE = 5
 NUMBER_OF_ITERATIONS = 100
 ELITISM = 1 #number of individuals to copy to the next generation
 TOURNAMENT = 3

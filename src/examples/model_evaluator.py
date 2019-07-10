@@ -12,9 +12,8 @@ import tensorflow as tf
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-model = load_model('examples/models/model_7_0_fashionmnist.h5')
+#model = load_model('examples/models/model_7_0_fashionmnist.h5')
 experiment_time = datetime.datetime.now()
-initial_weights = model.get_weights()
 
 def prot_div(left, right):
     if right == 0:
@@ -34,17 +33,47 @@ def if_func(condition, state1, state2):
 #coreml_model = coremltools.converters.keras.convert('reshaped_model.h5')
 #coreml_model.save('MyPredictor.mlmodel')
 
-batch_size = 100
+batch_size = 1000
 epochs = 100
+
+def resize_data(args):
+    """
+        Resize the dataset 28 x 28 datasets to 32x32
+
+        Parameters
+        ----------
+        args : tuple(np.array, (int, int))
+            instances, and shape of the reshaped signal
+
+        Returns
+        -------
+        content : np.array
+            reshaped instances
+    """
+
+    content, shape = args
+    session = tf.Session()
+    content = content.reshape(-1, 28, 28, 1)
+
+    if shape != (28, 28):
+        content = tf.image.resize_images(content, shape, tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+    
+    content = tf.image.grayscale_to_rgb(content)
+    content = content.eval(session=session)
+    session.close()
+    tf.reset_default_graph()
+    tf.keras.backend.clear_session()
+    
+    return content
 
 def load_dataset(n_classes=10, validation_size=7500):
         #Confirmar mnist
+        #(x_train, y_train), (x_test, y_test) = converted_data
         (x_train, y_train), (x_test, y_test) = keras.datasets.fashion_mnist.load_data()
-		#(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
-
         x_train, x_val, y_train, y_val = train_test_split(x_train, y_train,
                                                           test_size=validation_size,
                                                           stratify=y_train)
+
 
         #input scaling
         x_train = x_train.astype('float32')
@@ -63,17 +92,22 @@ def load_dataset(n_classes=10, validation_size=7500):
         x_val -= x_mean
         x_test -= x_mean
 
+
+        x_train = resize_data((x_train, (32,32)))
+        x_val = resize_data((x_val, (32,32)))
+        x_test = resize_data((x_test, (32,32)))
+
         y_train = keras.utils.to_categorical(y_train, n_classes)
         y_val = keras.utils.to_categorical(y_val, n_classes)
 
-        dataset = { #'x_train': x_train,
-            'x_train': x_train.reshape(x_train.shape[0], x_train.shape[1], x_train.shape[2], 1),
+        dataset = { 'x_train': x_train,
+            #'x_train': x_train.reshape(x_train.shape[0], x_train.shape[1], x_train.shape[2], 1),
                     'y_train': y_train,
-                    #'x_val': x_val,
-                    'x_val': x_val.reshape(x_val.shape[0], x_val.shape[1], x_val.shape[2], 1), 
+                    'x_val': x_val,
+            #        'x_val': x_val.reshape(x_val.shape[0], x_val.shape[1], x_val.shape[2], 1), 
                    'y_val': y_val,
-                   #'x_test': x_test,
-                   'x_test': x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], 1), 
+                   'x_test': x_test,
+            #       'x_test': x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], 1), 
                    'y_test': y_test}
 
         return dataset
@@ -97,11 +131,12 @@ dataset = load_dataset()
 datagen_train.fit(dataset['x_train'])
 
 
-opt = model.optimizer
-model.compile(loss='categorical_crossentropy', optimizer=keras.optimizers.SGD(lr=0.01, momentum=0.9, decay=0.0, nesterov=False), metrics=['accuracy'])
 
 def train_model(phen):
-    model.set_weights(initial_weights)
+    model = load_model('examples/models/model_7_0.h5')
+    opt = model.optimizer
+    model.compile(loss='categorical_crossentropy', optimizer=keras.optimizers.SGD(lr=0.01, momentum=0.0, decay=0.0, nesterov=False), metrics=['accuracy'])
+
     K.tensorflow_backend._get_available_gpus()
     function_string ='''
 def scheduler(learning_rate, epoch):
@@ -109,13 +144,14 @@ def scheduler(learning_rate, epoch):
     exec(function_string, globals())
     print(function_string)
     lr_schedule_callback = keras.callbacks.LearningRateScheduler(scheduler, verbose=1)
+    early_stop = keras.callbacks.EarlyStopping(restore_best_weights=True)
     score = model.fit_generator(datagen_train.flow(dataset['x_train'],
                                                        dataset['y_train'],
                                                        batch_size=batch_size),
                                     steps_per_epoch=(dataset['x_train'].shape[0] // batch_size),
                                     epochs=epochs,
                                     validation_data=(dataset['x_val'], dataset['y_val']),
-                                    callbacks = [lr_schedule_callback,],
+                                    callbacks = [lr_schedule_callback, early_stop],
                                     verbose=1)
     return max(score.history['val_acc'])
 
